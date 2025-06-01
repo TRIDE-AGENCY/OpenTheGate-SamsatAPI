@@ -4,7 +4,7 @@
 
 The Indonesian Plate Checker API provides comprehensive information about Indonesian vehicle license plates. It validates plate formats, queries the official Samsat database, and provides detailed analysis including vehicle type classification and institutional information.
 
-**Base URL:** `https://samsat-api.zeabur.app`
+**Base URL:** `https://samsat-api-v1.zeabur.app`
 
 ---
 
@@ -74,7 +74,7 @@ GET /check-plate?plate=B1234ABC
 
 **Example:**
 ```bash
-curl "https://samsat-api.zeabur.app/check-plate?plate=B1234ABC"
+curl "https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC"
 ```
 
 ### 3. **POST /check-plate** - Check Plate (JSON Body)
@@ -92,7 +92,7 @@ Content-Type: application/json
 
 **Example:**
 ```bash
-curl -X POST https://samsat-api.zeabur.app/check-plate \
+curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   -H "Content-Type: application/json" \
   -d '{"plate": "B1234ABC"}'
 ```
@@ -285,12 +285,12 @@ Content-Type: application/json
 ### **JavaScript/Node.js**
 ```javascript
 // GET method
-const response = await fetch('https://samsat-api.zeabur.app/check-plate?plate=B1234ABC');
+const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC');
 const data = await response.json();
 console.log(data);
 
 // POST method
-const response = await fetch('https://samsat-api.zeabur.app/check-plate', {
+const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -306,12 +306,12 @@ console.log(data);
 import requests
 
 # GET method
-response = requests.get('https://samsat-api.zeabur.app/check-plate?plate=B1234ABC')
+response = requests.get('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC')
 data = response.json()
 print(data)
 
 # POST method
-response = requests.post('https://samsat-api.zeabur.app/check-plate', 
+response = requests.post('https://samsat-api-v1.zeabur.app/check-plate', 
                         json={'plate': 'B1234ABC'})
 data = response.json()
 print(data)
@@ -320,7 +320,7 @@ print(data)
 ### **PHP**
 ```php
 // GET method
-$response = file_get_contents('https://samsat-api.zeabur.app/check-plate?plate=B1234ABC');
+$response = file_get_contents('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC');
 $data = json_decode($response, true);
 print_r($data);
 
@@ -333,7 +333,7 @@ $context = stream_context_create([
         'content' => $data
     ]
 ]);
-$response = file_get_contents('https://samsat-api.zeabur.app/check-plate', false, $context);
+$response = file_get_contents('https://samsat-api-v1.zeabur.app/check-plate', false, $context);
 $data = json_decode($response, true);
 print_r($data);
 ```
@@ -341,10 +341,10 @@ print_r($data);
 ### **cURL**
 ```bash
 # GET method
-curl "https://samsat-api.zeabur.app/check-plate?plate=B1234ABC"
+curl "https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC"
 
 # POST method
-curl -X POST https://samsat-api.zeabur.app/check-plate \
+curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   -H "Content-Type: application/json" \
   -d '{"plate": "B1234ABC"}'
 ```
