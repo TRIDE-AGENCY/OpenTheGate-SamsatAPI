@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Indonesian Plate Checker API provides comprehensive information about Indonesian vehicle license plates. It validates plate formats, queries the official Samsat database, and provides detailed analysis including vehicle type classification and regional information.
+The Indonesian Plate Checker API provides comprehensive information about Indonesian vehicle license plates. It validates plate formats, queries the official Samsat database, and provides detailed analysis including vehicle type classification and institutional information.
 
 **Base URL:** `https://samsat-api.zeabur.app`
 
@@ -26,8 +26,8 @@ The Indonesian Plate Checker API provides comprehensive information about Indone
 
 ### ❌ **Recognized but Not in Database**
 - **State Agency**: `RI-1`, `RI-12`
-- **Diplomatic**: `CD-12-34`, `CC-56-78`
-- **Old Military**: `1234-00`, `5678-V`
+- **Diplomatic**: `CD-12-34`, `CC-56-78`, `CN-12-34`, `CS-56-78`
+- **Old Military**: `1234-00`, `1234-01`, `1234-02`, `1234-09`, `1234-10`, `1234-V`
 
 ---
 
@@ -44,11 +44,11 @@ GET /
 **Response:**
 ```json
 {
-  "message": "Indonesian Plate Checker API",
+  "message": "Indonesian Plate Checker API with Institution Support",
   "database_support": "Hanya mendukung format plat standar Indonesia (XX-XXXX-XXX)",
   "supported_format": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
   "features": {
-    "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil, 2000-6999: Motor, 7000-7999: Bus, 8000-9999: Kendaraan Berat)",
+    "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil Penumpang, 2000-6999: Sepeda Motor, 7000-7999: Mobil Bus, 8000-8999: Mobil Barang, 9000-9999: Kendaraan Khusus)",
     "plate_type": "Sipil atau Institusi (ZZT/ZZU/ZZD/ZZL/ZZP/ZZH)",
     "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat"
   },
@@ -106,8 +106,8 @@ curl -X POST https://samsat-api.zeabur.app/check-plate \
 
 ```json
 {
-  "status": "Plat sudah terdaftar di Samsat",
-  "jenis_kendaraan": "Motor",
+  "status": "Plat sudah terdaftar",
+  "jenis_kendaraan": "Sepeda Motor",
   "jenis_plat_nomor": "Sipil",
   "plate_analysis": {
     "kode_wilayah": "B",
@@ -128,9 +128,10 @@ curl -X POST https://samsat-api.zeabur.app/check-plate \
 
 ```json
 {
-  "status": "Plat sudah terdaftar di Samsat",
-  "jenis_kendaraan": "Mobil - Kendaraan Penumpang",
-  "jenis_plat_nomor": "Institusi - POLRI",
+  "status": "Plat sudah terdaftar",
+  "jenis_kendaraan": "Mobil Penumpang",
+  "jenis_plat_nomor": "Dinas TNI dan POLRI",
+  "institution": "POLRI",
   "plate_analysis": {
     "kode_wilayah": "B",
     "nomor_identitas_polisi": 1234,
@@ -150,7 +151,7 @@ curl -X POST https://samsat-api.zeabur.app/check-plate \
 
 ```json
 {
-  "message": "Plat nomor tersebut tidak tersedia"
+  "message": "Plat tidak terdaftar"
 }
 ```
 
@@ -159,8 +160,8 @@ curl -X POST https://samsat-api.zeabur.app/check-plate \
 
 ```json
 {
-  "message": "Format plat dinas negara tidak didukung oleh database Samsat",
-  "jenis_plat_nomor": "Dinas Negara",
+  "message": "Format plat dinas negara tidak didukung oleh database",
+  "jenis_plat_nomor": "Dinas Pemerintah",
   "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
 }
 ```
@@ -170,8 +171,19 @@ curl -X POST https://samsat-api.zeabur.app/check-plate \
 
 ```json
 {
-  "message": "Format plat diplomatik tidak didukung oleh database Samsat",
+  "message": "Format plat diplomatik tidak didukung oleh database",
   "jenis_plat_nomor": "Diplomatik",
+  "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
+}
+```
+
+### 🪖 **Non-Standard Format (Old Military)**
+**Request:** `1234-00`
+
+```json
+{
+  "message": "Format plat militer lama tidak didukung oleh database",
+  "jenis_plat_nomor": "Dinas TNI dan POLRI",
   "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
 }
 ```
@@ -194,10 +206,11 @@ Based on `nomor_identitas_polisi` (middle number):
 
 | Range | Vehicle Type |
 |-------|--------------|
-| 1-1999 | Mobil - Kendaraan Penumpang |
-| 2000-6999 | Motor |
-| 7000-7999 | Bus |
-| 8000-9999 | Kendaraan Berat |
+| 1-1999 | Mobil Penumpang |
+| 2000-6999 | Sepeda Motor |
+| 7000-7999 | Mobil Bus |
+| 8000-8999 | Mobil Barang |
+| 9000-9999 | Kendaraan Khusus |
 
 ### 🏛️ **Institution Codes**
 Based on `kode_khusus` (suffix):
@@ -213,7 +226,7 @@ Based on `kode_khusus` (suffix):
 
 ### 🏷️ **Plate Type**
 - **Sipil**: Regular civilian plates
-- **Institusi**: Government/military institution plates
+- **Dinas TNI dan POLRI**: Government/military institution plates
 
 ---
 
@@ -246,7 +259,8 @@ Content-Type: application/json
 |-------|------|-------------|
 | `status` | string | Registration status message |
 | `jenis_kendaraan` | string | Vehicle type classification |
-| `jenis_plat_nomor` | string | Plate type (Civil/Institution) |
+| `jenis_plat_nomor` | string | Plate type (Sipil/Dinas TNI dan POLRI) |
+| `institution` | string | Institution name (only for institution plates) |
 | `plate_analysis` | object | Detailed plate breakdown |
 | `plate_analysis.kode_wilayah` | string | Regional code |
 | `plate_analysis.nomor_identitas_polisi` | number | Police identity number |
@@ -262,6 +276,7 @@ Content-Type: application/json
 |-------|------|-------------|
 | `error` | string | Error message |
 | `message` | string | User-friendly message |
+| `note` | string | Additional information (for non-standard formats) |
 
 ---
 
@@ -351,7 +366,7 @@ const response = await fetch('https://samsat-api.zeabur.app/check-plate?plate=B1
 if (response.status === 404) {
   // Plate not found
   const error = await response.json();
-  console.log(error.message); // "Plat nomor tersebut tidak tersedia"
+  console.log(error.message); // "Plat tidak terdaftar"
 } else if (response.status === 400) {
   // Bad request
   const error = await response.json();

@@ -6,6 +6,8 @@ import json
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
+print("=== APP STARTING WITH INSTITUTION SUPPORT ===")
+
 class IndonesianPlateChecker:
     def __init__(self):
         self.base_url = "https://firestore.googleapis.com/v1/projects/informasisamsat/databases/(default)/documents"
@@ -19,8 +21,10 @@ class IndonesianPlateChecker:
             'ZZP': 'POLRI',
             'ZZH': 'Kementrian / Lembaga Negara'
         }
+        print(f"Institution codes loaded: {self.institution_codes}")
     
     def check_plate(self, plate_number):
+        print(f"=== CHECKING PLATE: {plate_number} ===")
         # Clean the plate number
         plate_clean = plate_number.replace('-', '').replace(' ', '').upper()
         
@@ -37,12 +41,15 @@ class IndonesianPlateChecker:
     
     def check_standard_plate(self, plate_clean):
         prefix, middle, suffix = self.parse_standard_plate(plate_clean)
+        print(f"PARSED: prefix={prefix}, middle={middle}, suffix={suffix}")
+        
         if not prefix or middle is None or not suffix:
             return {"error": "Invalid standard plate format"}
         
         # Use only the last letter of suffix for API call (as per original logic)
         suffix_for_api = suffix[-1]
         url = f"{self.base_url}/nopol/{prefix}/belakang/{suffix_for_api}"
+        print(f"API URL: {url}")
         
         try:
             response = requests.get(url)
@@ -50,7 +57,6 @@ class IndonesianPlateChecker:
                 result = self.format_response(response.json())
                 if "error" not in result:
                     # Create plate_analysis with exact order as a regular dict
-                    # Python 3.7+ preserves dict insertion order
                     plate_analysis = {}
                     plate_analysis["kode_wilayah"] = prefix
                     plate_analysis["nomor_identitas_polisi"] = middle
@@ -58,12 +64,24 @@ class IndonesianPlateChecker:
                     
                     # Build final response as regular dict
                     ordered_result = {}
-                    ordered_result["status"] = "Plat sudah terdaftar di Samsat"
+                    ordered_result["status"] = "Plat sudah terdaftar"
                     ordered_result["jenis_kendaraan"] = self.get_vehicle_type(middle)
                     ordered_result["jenis_plat_nomor"] = self.get_plate_type(suffix)
+                    
+                    # CRITICAL: Add institution field
+                    institution_name = self.get_institution_name(suffix)
+                    print(f"INSTITUTION CHECK: suffix='{suffix}' -> institution='{institution_name}'")
+                    
+                    if institution_name:
+                        ordered_result["institution"] = institution_name
+                        print(f"ADDED INSTITUTION FIELD: {institution_name}")
+                    else:
+                        print("NO INSTITUTION FOUND")
+                    
                     ordered_result["plate_analysis"] = plate_analysis
                     ordered_result["plate_region"] = result["plate_region"]
                     
+                    print(f"FINAL RESULT KEYS: {list(ordered_result.keys())}")
                     return ordered_result
                 return result
             else:
@@ -84,21 +102,28 @@ class IndonesianPlateChecker:
     
     def get_vehicle_type(self, middle_number):
         if 1 <= middle_number <= 1999:
-            return "Mobil - Kendaraan Penumpang"
+            return "Mobil Penumpang"
         elif 2000 <= middle_number <= 6999:
-            return "Motor"
+            return "Sepeda Motor"
         elif 7000 <= middle_number <= 7999:
-            return "Bus"
-        elif 8000 <= middle_number <= 9999:
-            return "Kendaraan Berat"
+            return "Mobil Bus"
+        elif 8000 <= middle_number <= 8999:
+            return "Mobil Barang"
+        elif 9000 <= middle_number <= 9999:
+            return "Kendaraan Khusus"
         else:
             return "Tidak Diketahui"
     
     def get_plate_type(self, suffix):
         if suffix in self.institution_codes:
-            return f"Institusi - {self.institution_codes[suffix]}"
+            return "Dinas TNI dan POLRI" 
         else:
             return "Sipil"
+    
+    def get_institution_name(self, suffix):
+        result = self.institution_codes.get(suffix, None)
+        print(f"get_institution_name('{suffix}') = '{result}'")
+        return result
     
     def analyze_non_standard_plate(self, plate):
         plate_upper = plate.upper().replace('-', '').replace(' ', '')
@@ -106,15 +131,15 @@ class IndonesianPlateChecker:
         # State agency: RI format
         if re.match(r'^RI\d*$', plate_upper):
             return {
-                "message": "Format plat dinas negara tidak didukung oleh database Samsat",
-                "jenis_plat_nomor": "Dinas Negara",
+                "message": "Format plat dinas negara tidak didukung oleh database",
+                "jenis_plat_nomor": "Dinas Pemerintah", 
                 "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
             }
         
         # Diplomatic: CC/CD/CN/CS format
         elif re.match(r'^(CC|CD|CN|CS)\d*$', plate_upper):
             return {
-                "message": "Format plat diplomatik tidak didukung oleh database Samsat", 
+                "message": "Format plat diplomatik tidak didukung oleh database", 
                 "jenis_plat_nomor": "Diplomatik",
                 "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
             }
@@ -122,8 +147,8 @@ class IndonesianPlateChecker:
         # Old military: XXXX-XX format
         elif re.match(r'^\d{4}(00|01|02|09|10|V)$', plate_upper):
             return {
-                "message": "Format plat militer lama tidak didukung oleh database Samsat",
-                "jenis_plat_nomor": "Militer Lama", 
+                "message": "Format plat militer lama tidak didukung oleh database",
+                "jenis_plat_nomor": "Dinas TNI dan POLRI",
                 "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
             }
         
@@ -171,7 +196,7 @@ def check_plate():
     # Check if there's an error (plate not found)
     if "error" in result:
         return app.response_class(
-            response=json.dumps({"message": "Plat nomor tersebut tidak tersedia"}),
+            response=json.dumps({"message": "Plat tidak terdaftar"}),
             status=404,
             mimetype='application/json'
         )
@@ -199,7 +224,7 @@ def check_plate_post():
     # Check if there's an error (plate not found)
     if "error" in result:
         return app.response_class(
-            response=json.dumps({"message": "Plat nomor tersebut tidak tersedia"}),
+            response=json.dumps({"message": "Plat nomor tidak terdaftar"}),
             status=404,
             mimetype='application/json'
         )
@@ -213,11 +238,11 @@ def check_plate_post():
 @app.route('/', methods=['GET'])
 def home():
     response_data = {
-        "message": "Indonesian Plate Checker API",
+        "message": "Indonesian Plate Checker API with Institution Support",
         "database_support": "Hanya mendukung format plat standar Indonesia (XX-XXXX-XXX)",
         "supported_format": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
         "features": {
-            "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil, 2000-6999: Motor, 7000-7999: Bus, 8000-9999: Kendaraan Berat)",
+            "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil Penumpang, 2000-6999: Sepeda Motor, 7000-7999: Mobil Bus, 8000-8999: Mobil Barang, 9000-9999: Kendaraan Khusus)",
             "plate_type": "Sipil atau Institusi (ZZT/ZZU/ZZD/ZZL/ZZP/ZZH)",
             "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat"
         },
