@@ -22,26 +22,49 @@ class IndonesianPlateChecker:
             'ZZH': 'Kementrian / Lembaga Negara'
         }
         
-        # Military suffix mapping for old format conversion
-        self.military_suffix_mapping = {
-            '00': 'ZZT',  # TNI Headquarters
-            '01': 'ZZD',  # TNI Army
-            '02': 'ZZL',  # TNI Navy
-            '09': 'ZZU',  # TNI Air Force
-            '10': 'ZZP',  # POLRI
-            'I': 'ZZD',   # Roman numerals for Army
-            'II': 'ZZD',
-            'III': 'ZZD',
-            'IV': 'ZZD',
-            'V': 'ZZD',
-            'VI': 'ZZD',
-            'VII': 'ZZD',
-            'VIII': 'ZZD',
-            'IX': 'ZZD'
-        }
+        # Valid military suffixes - includes Roman numerals I-IX only
+        self.VALID_NUMERIC_SUFFIXES = {'00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', 
+                                     '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
+                                     '21', '22', '23', '24', '25', '26', '27', '28', '29', '30',
+                                     '31', '32', '33', '34', '35', '36', '37', '38', '39', '40',
+                                     '41', '42', '43', '44', '45', '46', '47', '48', '49', '50',
+                                     '51', '52', '53', '54', '55', '56', '57', '58', '59', '60',
+                                     '61', '62', '63', '64', '65', '66', '67', '68', '69', '70',
+                                     '71', '72', '73', '74', '75', '76', '77', '78', '79', '80',
+                                     '81', '82', '83', '84', '85', '86', '87', '88', '89', '90',
+                                     '91', '92', '93', '94', '95', '96', '97', '98', '99'}
+        
+        self.VALID_ROMAN_SUFFIXES = {'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'}
+        
+        # Enhanced military suffix mapping for old format conversion
+        self.military_suffix_mapping = {}
+        
+        # Map numeric suffixes (00-99) to appropriate institutions
+        # You can customize this mapping based on actual military organization
+        for suffix in self.VALID_NUMERIC_SUFFIXES:
+            if suffix == '00':
+                self.military_suffix_mapping[suffix] = 'ZZT'  # TNI Headquarters
+            elif suffix in ['01', '02', '03', '04', '05']:
+                self.military_suffix_mapping[suffix] = 'ZZD'  # TNI Army
+            elif suffix in ['06', '07', '08']:
+                self.military_suffix_mapping[suffix] = 'ZZL'  # TNI Navy
+            elif suffix in ['09', '10', '11']:
+                self.military_suffix_mapping[suffix] = 'ZZU'  # TNI Air Force
+            elif suffix in ['12', '13', '14', '15']:
+                self.military_suffix_mapping[suffix] = 'ZZP'  # POLRI
+            else:
+                # Default other suffixes to TNI Army (you can adjust this logic)
+                self.military_suffix_mapping[suffix] = 'ZZD'
+        
+        # Map Roman numerals to TNI Army (traditional usage)
+        for roman in self.VALID_ROMAN_SUFFIXES:
+            self.military_suffix_mapping[roman] = 'ZZD'
         
         print(f"Institution codes loaded: {self.institution_codes}")
-        print(f"Military suffix mapping loaded: {self.military_suffix_mapping}")
+        print(f"Valid numeric suffixes: {len(self.VALID_NUMERIC_SUFFIXES)} suffixes (00-99)")
+        print(f"Valid Roman suffixes: {self.VALID_ROMAN_SUFFIXES}")
+        print(f"Military suffix mapping loaded: {len(self.military_suffix_mapping)} mappings")
+    
     
     def check_plate(self, plate_number):
         print(f"=== CHECKING PLATE: {plate_number} ===")
@@ -58,19 +81,27 @@ class IndonesianPlateChecker:
             return self.analyze_non_standard_plate(plate_number)
     
     def is_old_military_format(self, plate):
-        """Check if plate matches old military format from OCR: XXXXX-XX or XXXX-X"""
+        """Check if plate matches old military format from OCR: XXXXX-XX, XXXX-XX, XXXXX-X, or XXXX-X"""
         plate_clean = plate.replace(' ', '').upper()
-        # Patterns: 12345-00, 1234-V, etc.
-        patterns = [
-            r'^\d{5}-(00|01|02|09|10)$',  # 5 digits + 2 digit suffix
-            r'^\d{4}-(00|01|02|09|10)$',  # 4 digits + 2 digit suffix
-            r'^\d{4,5}-(I|II|III|IV|V|VI|VII|VIII|IX)$'  # Roman numerals
-        ]
         
-        for pattern in patterns:
-            if re.match(pattern, plate_clean):
-                print(f"DETECTED OLD MILITARY FORMAT: {plate_clean}")
+        # Check for numeric suffixes (00-99)
+        numeric_pattern = r'^(\d{4,5})-(\d{2})$'  # 4 or 5 digits + 2 digit suffix
+        numeric_match = re.match(numeric_pattern, plate_clean)
+        if numeric_match:
+            suffix = numeric_match.group(2)
+            if suffix in self.VALID_NUMERIC_SUFFIXES:
+                print(f"DETECTED OLD MILITARY FORMAT (NUMERIC): {plate_clean}")
                 return True
+        
+        # Check for Roman numeral suffixes (I-IX)
+        roman_pattern = r'^(\d{4,5})-(I|II|III|IV|V|VI|VII|VIII|IX)$'  # 4 or 5 digits + Roman numeral
+        roman_match = re.match(roman_pattern, plate_clean)
+        if roman_match:
+            suffix = roman_match.group(2)
+            if suffix in self.VALID_ROMAN_SUFFIXES:
+                print(f"DETECTED OLD MILITARY FORMAT (ROMAN): {plate_clean}")
+                return True
+        
         return False
     
     def handle_old_military_plate(self, plate):
@@ -84,18 +115,39 @@ class IndonesianPlateChecker:
         else:
             return {"error": "Invalid military plate format"}
         
+        # Validate number part (must be 4 or 5 digits)
+        if not re.match(r'^\d{4,5}$', number_part):
+            return {
+                "error": f"Invalid number format: {number_part}",
+                "note": "Nomor kendaraan harus 4 atau 5 digit"
+            }
+        
+        # Validate suffix part
+        if suffix_part not in self.VALID_NUMERIC_SUFFIXES and suffix_part not in self.VALID_ROMAN_SUFFIXES:
+            return {
+                "error": f"Invalid military suffix: {suffix_part}",
+                "note": f"Suffix harus berupa angka 00-99 atau angka Romawi I-IX",
+                "valid_suffixes": {
+                    "numeric": "00-99",
+                    "roman": "I, II, III, IV, V, VI, VII, VIII, IX"
+                }
+            }
+        
         # Map suffix to institution
         institution_code = self.military_suffix_mapping.get(suffix_part)
         institution_name = self.institution_codes.get(institution_code) if institution_code else None
         
         if not institution_name:
             return {
-                "error": f"Unknown military suffix: {suffix_part}",
-                "note": "Suffix tidak dikenal dalam sistem militer Indonesia"
+                "error": f"Unknown military suffix mapping: {suffix_part}",
+                "note": "Suffix tidak dapat dipetakan ke institusi yang dikenal"
             }
         
         # Determine vehicle type based on number (military classification)
         vehicle_type = self.get_military_vehicle_type(number_part)
+        
+        # Determine suffix type
+        suffix_type = "Angka Romawi" if suffix_part in self.VALID_ROMAN_SUFFIXES else "Numerik"
         
         # Create comprehensive response for old military plates
         result = {
@@ -106,7 +158,10 @@ class IndonesianPlateChecker:
             "institution": institution_name,
             "military_analysis": {
                 "nomor_kendaraan": number_part,
-                "kode_institusi": suffix_part
+                "kode_institusi": suffix_part,
+                "tipe_suffix": suffix_type,
+                "institution_code": institution_code,
+                "digit_count": len(number_part)
             }
         }
         
@@ -114,7 +169,7 @@ class IndonesianPlateChecker:
         return result
     
     def get_military_vehicle_type(self, number_part):
-        """Simple military vehicle classification"""
+        """Simple military vehicle classification - returns only 'Kendaraan Militer'"""
         return "Kendaraan Militer"
     
     def is_standard_plate(self, plate_clean):
