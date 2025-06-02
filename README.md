@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Indonesian Plate Checker API provides comprehensive information about Indonesian vehicle license plates. It validates plate formats, queries the official Samsat database, and provides detailed analysis including vehicle type classification and institutional information.
+The Indonesian Plate Checker API provides comprehensive information about Indonesian vehicle license plates. It validates plate formats, queries the official Samsat database, and provides detailed analysis including vehicle type classification and institutional information. **Now with enhanced support for old military plate formats from OCR systems.**
 
 **Base URL:** `https://samsat-api-v1.zeabur.app`
 
@@ -11,10 +11,12 @@ The Indonesian Plate Checker API provides comprehensive information about Indone
 ## 🎯 Features
 
 - **Plate Validation**: Supports standard Indonesian plate format (XX-XXXX-XXX)
+- **Military Plate Support**: Recognizes and analyzes old military format plates (XXXXX-XX)
 - **Vehicle Classification**: Automatic vehicle type detection based on police identity number
-- **Institution Detection**: Identifies government/military institution plates
+- **Institution Detection**: Identifies government/military institution plates with detailed mapping
 - **Regional Information**: Province, city, Samsat office, and address details
 - **Format Recognition**: Detects and provides informative responses for non-standard formats
+- **OCR Compatibility**: Direct integration with license plate recognition systems
 
 ---
 
@@ -24,10 +26,14 @@ The Indonesian Plate Checker API provides comprehensive information about Indone
 - **Standard Civil Plates**: `B-1234-ABC`, `D-5678-XYZ`
 - **Institution Plates**: `B-1234-ZZP`, `A-9876-ZZT`
 
+### 🎯 **OCR Military Format Support (Enhanced)**
+- **Old Military Plates**: `12345-00`, `50072-00`, `1234-01`, `1234-V`
+- **Recognition**: Provides detailed institutional analysis
+- **Mapping**: Converts old codes to current institution names
+
 ### ❌ **Recognized but Not in Database**
 - **State Agency**: `RI-1`, `RI-12`
 - **Diplomatic**: `CD-12-34`, `CC-56-78`, `CN-12-34`, `CS-56-78`
-- **Old Military**: `1234-00`, `1234-01`, `1234-02`, `1234-09`, `1234-10`, `1234-V`
 
 ---
 
@@ -44,17 +50,30 @@ GET /
 **Response:**
 ```json
 {
-  "message": "Indonesian Plate Checker API with Institution Support",
-  "database_support": "Hanya mendukung format plat standar Indonesia (XX-XXXX-XXX)",
-  "supported_format": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
+  "message": "Indonesian Plate Checker API with Institution Support & OCR Military Compatibility",
+  "database_support": "Mendukung format plat standar Indonesia (XX-XXXX-XXX) dan format militer lama dari OCR",
+  "supported_formats": {
+    "standard": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
+    "old_military": "XXXXX-XX atau XXXX-X (e.g., 12345-00, 1234-V)"
+  },
   "features": {
     "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil Penumpang, 2000-6999: Sepeda Motor, 7000-7999: Mobil Bus, 8000-8999: Mobil Barang, 9000-9999: Kendaraan Khusus)",
     "plate_type": "Sipil atau Institusi (ZZT/ZZU/ZZD/ZZL/ZZP/ZZH)",
-    "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat"
+    "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat",
+    "military_support": "Deteksi dan analisis plat militer format lama dengan mapping institusi"
+  },
+  "military_suffix_codes": {
+    "00": "Markas Besar TNI",
+    "01": "TNI AD (Army)",
+    "02": "TNI AL (Navy)", 
+    "09": "TNI AU (Air Force)",
+    "10": "POLRI (Police)",
+    "I-IX": "TNI AD (Roman numerals)"
   },
   "endpoints": {
-    "GET /check-plate?plate=B1234ABC": "Check plate via query parameter",
-    "POST /check-plate": "Check plate via JSON body {'plate': 'B1234ABC'}"
+    "GET /check-plate?plate=B1234ABC": "Check standard plate via query parameter",
+    "GET /check-plate?plate=12345-00": "Check old military plate via query parameter",
+    "POST /check-plate": "Check plate via JSON body {'plate': 'B1234ABC' or '12345-00'}"
   }
 }
 ```
@@ -65,16 +84,18 @@ Checks a license plate using query parameter.
 **Request:**
 ```http
 GET /check-plate?plate=B1234ABC
+GET /check-plate?plate=50072-00
 ```
 
 **Parameters:**
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `plate` | string | Yes | License plate number (with or without hyphens) |
+| `plate` | string | Yes | License plate number (standard or old military format) |
 
 **Example:**
 ```bash
 curl "https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC"
+curl "https://samsat-api-v1.zeabur.app/check-plate?plate=50072-00"
 ```
 
 ### 3. **POST /check-plate** - Check Plate (JSON Body)
@@ -94,7 +115,7 @@ Content-Type: application/json
 ```bash
 curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   -H "Content-Type: application/json" \
-  -d '{"plate": "B1234ABC"}'
+  -d '{"plate": "50072-00"}'
 ```
 
 ---
@@ -146,6 +167,48 @@ curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
 }
 ```
 
+### 🪖 **Old Military Plate (OCR Compatible)**
+**Request:** `50072-00`
+
+```json
+{
+  "status": "Format plat militer lama terdeteksi",
+  "original_plate": "50072-00",
+  "jenis_kendaraan": "Kendaraan Militer",
+  "jenis_plat_nomor": "Dinas TNI dan POLRI",
+  "institution": "Markas Besar TNI",
+  "military_analysis": {
+    "nomor_kendaraan": "50072",
+    "kode_institusi": "00",
+    "format": "Sistem plat militer lama",
+    "era": "Pre-2005 military numbering system"
+  },
+  "note": "Plat militer format lama, tidak dapat divalidasi dengan database SAMSAT standar",
+  "validation_status": "Format recognized but not database-verifiable"
+}
+```
+
+### 🪖 **Old Military Plate with Roman Numerals**
+**Request:** `1234-V`
+
+```json
+{
+  "status": "Format plat militer lama terdeteksi",
+  "original_plate": "1234-V",
+  "jenis_kendaraan": "Kendaraan Militer",
+  "jenis_plat_nomor": "Dinas TNI dan POLRI",
+  "institution": "TNI AD",
+  "military_analysis": {
+    "nomor_kendaraan": "1234",
+    "kode_institusi": "V",
+    "format": "Sistem plat militer lama",
+    "era": "Pre-2005 military numbering system"
+  },
+  "note": "Plat militer format lama, tidak dapat divalidasi dengan database SAMSAT standar",
+  "validation_status": "Format recognized but not database-verifiable"
+}
+```
+
 ### ❌ **Standard Plate Not Found**
 **Request:** `X9999ZZZ`
 
@@ -177,17 +240,6 @@ curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
 }
 ```
 
-### 🪖 **Non-Standard Format (Old Military)**
-**Request:** `1234-00`
-
-```json
-{
-  "message": "Format plat militer lama tidak didukung oleh database",
-  "jenis_plat_nomor": "Dinas TNI dan POLRI",
-  "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
-}
-```
-
 ### ⚠️ **Invalid Format**
 **Request:** `INVALID123`
 
@@ -212,7 +264,7 @@ Based on `nomor_identitas_polisi` (middle number):
 | 8000-8999 | Mobil Barang |
 | 9000-9999 | Kendaraan Khusus |
 
-### 🏛️ **Institution Codes**
+### 🏛️ **Institution Codes (Current Format)**
 Based on `kode_khusus` (suffix):
 
 | Code | Institution |
@@ -224,6 +276,18 @@ Based on `kode_khusus` (suffix):
 | ZZP | POLRI |
 | ZZH | Kementrian / Lembaga Negara |
 
+### 🪖 **Military Suffix Mapping (Old Format)**
+For old military plates from OCR systems:
+
+| Old Code | Institution | Current Code |
+|----------|-------------|--------------|
+| 00 | Markas Besar TNI | ZZT |
+| 01 | TNI AD (Army) | ZZD |
+| 02 | TNI AL (Navy) | ZZL |
+| 09 | TNI AU (Air Force) | ZZU |
+| 10 | POLRI (Police) | ZZP |
+| I-IX | TNI AD (Roman numerals) | ZZD |
+
 ### 🏷️ **Plate Type**
 - **Sipil**: Regular civilian plates
 - **Dinas TNI dan POLRI**: Government/military institution plates
@@ -234,7 +298,7 @@ Based on `kode_khusus` (suffix):
 
 | Status Code | Description |
 |-------------|-------------|
-| `200` | Success - Plate found and analyzed |
+| `200` | Success - Plate found and analyzed (including old military format) |
 | `400` | Bad Request - Missing or invalid parameters |
 | `404` | Not Found - Plate not found in database |
 | `500` | Internal Server Error |
@@ -254,7 +318,7 @@ Content-Type: application/json
 
 ### **Response Fields**
 
-#### **Success Response Fields:**
+#### **Success Response Fields (Standard Plates):**
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | string | Registration status message |
@@ -271,6 +335,22 @@ Content-Type: application/json
 | `plate_region.samsat_office` | string | Samsat office name |
 | `plate_region.address` | string | Complete address |
 
+#### **Success Response Fields (Old Military Plates):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Detection status message |
+| `original_plate` | string | Original input plate number |
+| `jenis_kendaraan` | string | Always "Kendaraan Militer" |
+| `jenis_plat_nomor` | string | Always "Dinas TNI dan POLRI" |
+| `institution` | string | Mapped institution name |
+| `military_analysis` | object | Military plate breakdown |
+| `military_analysis.nomor_kendaraan` | string | Vehicle number part |
+| `military_analysis.kode_institusi` | string | Institution code part |
+| `military_analysis.format` | string | Format description |
+| `military_analysis.era` | string | Historical period |
+| `note` | string | Additional information |
+| `validation_status` | string | Database validation status |
+
 #### **Error Response Fields:**
 | Field | Type | Description |
 |-------|------|-------------|
@@ -282,14 +362,37 @@ Content-Type: application/json
 
 ## 💡 Usage Examples
 
+### **OCR Integration Workflow**
+```javascript
+// Example: Process OCR result through SAMSAT API
+async function checkOCRResult(ocrPlateText) {
+  const response = await fetch(`https://samsat-api-v1.zeabur.app/check-plate?plate=${ocrPlateText}`);
+  const data = await response.json();
+  
+  if (data.status === "Format plat militer lama terdeteksi") {
+    console.log(`Military plate detected: ${data.institution}`);
+    console.log(`Vehicle number: ${data.military_analysis.nomor_kendaraan}`);
+  } else if (data.status === "Plat sudah terdaftar") {
+    console.log(`Standard plate found: ${data.jenis_kendaraan}`);
+    console.log(`Region: ${data.plate_region.province}`);
+  }
+  
+  return data;
+}
+
+// Process different OCR outputs
+checkOCRResult("50072-00");  // Old military format
+checkOCRResult("B 1234 ABC"); // Standard format
+```
+
 ### **JavaScript/Node.js**
 ```javascript
-// GET method
-const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC');
+// GET method for military plate
+const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate?plate=12345-00');
 const data = await response.json();
 console.log(data);
 
-// POST method
+// POST method for standard plate
 const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate', {
   method: 'POST',
   headers: {
@@ -305,12 +408,12 @@ console.log(data);
 ```python
 import requests
 
-# GET method
-response = requests.get('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC')
+# Check old military plate
+response = requests.get('https://samsat-api-v1.zeabur.app/check-plate?plate=50072-00')
 data = response.json()
-print(data)
+print(f"Institution: {data.get('institution', 'N/A')}")
 
-# POST method
+# Check standard plate
 response = requests.post('https://samsat-api-v1.zeabur.app/check-plate', 
                         json={'plate': 'B1234ABC'})
 data = response.json()
@@ -319,18 +422,20 @@ print(data)
 
 ### **PHP**
 ```php
-// GET method
-$response = file_get_contents('https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC');
+// Check military plate
+$response = file_get_contents('https://samsat-api-v1.zeabur.app/check-plate?plate=1234-V');
 $data = json_decode($response, true);
-print_r($data);
+if (isset($data['institution'])) {
+    echo "Institution: " . $data['institution'];
+}
 
-// POST method
-$data = json_encode(['plate' => 'B1234ABC']);
+// POST method for any plate
+$plateData = json_encode(['plate' => 'D5678ZZU']);
 $context = stream_context_create([
     'http' => [
         'method' => 'POST',
         'header' => 'Content-Type: application/json',
-        'content' => $data
+        'content' => $plateData
     ]
 ]);
 $response = file_get_contents('https://samsat-api-v1.zeabur.app/check-plate', false, $context);
@@ -340,13 +445,70 @@ print_r($data);
 
 ### **cURL**
 ```bash
-# GET method
-curl "https://samsat-api-v1.zeabur.app/check-plate?plate=B1234ABC"
+# Check old military format
+curl "https://samsat-api-v1.zeabur.app/check-plate?plate=50072-00"
 
-# POST method
+# Check standard format with POST
 curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   -H "Content-Type: application/json" \
-  -d '{"plate": "B1234ABC"}'
+  -d '{"plate": "B1234ZZP"}'
+```
+
+---
+
+## 🔄 Integration with OCR Systems
+
+### **Supported OCR Outputs**
+The API now seamlessly handles license plate recognition outputs:
+
+| OCR Output | API Response | Institution |
+|------------|--------------|-------------|
+| `"50072-00"` | Military plate analysis | Markas Besar TNI |
+| `"1234-01"` | Military plate analysis | TNI AD |
+| `"5678-V"` | Military plate analysis | TNI AD |
+| `"B 1234 ABC"` | Standard validation | Database lookup |
+| `"D5678ZZP"` | Institution validation | POLRI |
+
+### **Error Handling for OCR Integration**
+```javascript
+async function processPlateFromOCR(plateText) {
+  try {
+    const response = await fetch(`https://samsat-api-v1.zeabur.app/check-plate?plate=${plateText}`);
+    
+    if (response.status === 200) {
+      const data = await response.json();
+      
+      // Handle different response types
+      if (data.status === "Format plat militer lama terdeteksi") {
+        return {
+          type: "military",
+          institution: data.institution,
+          valid: true,
+          era: "old_format"
+        };
+      } else if (data.status === "Plat sudah terdaftar") {
+        return {
+          type: "standard",
+          region: data.plate_region.province,
+          valid: true,
+          era: "current"
+        };
+      }
+    } else if (response.status === 404) {
+      return {
+        type: "unknown",
+        valid: false,
+        message: "Plate not found in database"
+      };
+    }
+  } catch (error) {
+    return {
+      type: "error",
+      valid: false,
+      message: error.message
+    };
+  }
+}
 ```
 
 ---
@@ -361,10 +523,10 @@ The API returns appropriate HTTP status codes and error messages. Always check t
 
 **Common Error Patterns:**
 ```javascript
-const response = await fetch('https://samsat-api.zeabur.app/check-plate?plate=B1234ABC');
+const response = await fetch('https://samsat-api-v1.zeabur.app/check-plate?plate=50072-00');
 
 if (response.status === 404) {
-  // Plate not found
+  // Plate not found (for standard plates only)
   const error = await response.json();
   console.log(error.message); // "Plat tidak terdaftar"
 } else if (response.status === 400) {
@@ -372,9 +534,14 @@ if (response.status === 404) {
   const error = await response.json();
   console.log(error.error); // "Plate number is required"
 } else if (response.status === 200) {
-  // Success
+  // Success (including old military format)
   const data = await response.json();
-  console.log(data);
+  
+  if (data.status === "Format plat militer lama terdeteksi") {
+    console.log("Old military format detected:", data.institution);
+  } else {
+    console.log("Standard plate found:", data.jenis_kendaraan);
+  }
 }
 ```
 
@@ -387,3 +554,22 @@ For API support or questions, please refer to the API home endpoint for the most
 
 ## 📄 License
 This API is provided for educational and development purposes. Please ensure compliance with applicable laws and regulations when using vehicle registration data.
+
+---
+
+## 🔄 Changelog
+
+### Version 1.1.0 - OCR Military Support
+- ✅ Added support for old military plate formats from OCR systems
+- ✅ Enhanced military suffix mapping (00, 01, 02, 09, 10, I-IX)
+- ✅ Detailed military plate analysis responses
+- ✅ Institution name mapping for old military codes
+- ✅ Historical context for pre-2005 military numbering
+- ✅ Direct compatibility with license plate recognition APIs
+
+### Version 1.0.0 - Initial Release
+- ✅ Standard Indonesian plate format support
+- ✅ Institution plate recognition
+- ✅ SAMSAT database integration
+- ✅ Vehicle type classification
+- ✅ Regional information lookup
