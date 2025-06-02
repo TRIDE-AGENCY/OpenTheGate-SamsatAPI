@@ -6,7 +6,7 @@ import json
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
-print("=== APP STARTING WITH INSTITUTION SUPPORT ===")
+print("=== APP STARTING WITH INSTITUTION SUPPORT & OCR MILITARY COMPATIBILITY ===")
 
 class IndonesianPlateChecker:
     def __init__(self):
@@ -21,18 +21,101 @@ class IndonesianPlateChecker:
             'ZZP': 'POLRI',
             'ZZH': 'Kementrian / Lembaga Negara'
         }
+        
+        # Military suffix mapping for old format conversion
+        self.military_suffix_mapping = {
+            '00': 'ZZT',  # TNI Headquarters
+            '01': 'ZZD',  # TNI Army
+            '02': 'ZZL',  # TNI Navy
+            '09': 'ZZU',  # TNI Air Force
+            '10': 'ZZP',  # POLRI
+            'I': 'ZZD',   # Roman numerals for Army
+            'II': 'ZZD',
+            'III': 'ZZD',
+            'IV': 'ZZD',
+            'V': 'ZZD',
+            'VI': 'ZZD',
+            'VII': 'ZZD',
+            'VIII': 'ZZD',
+            'IX': 'ZZD'
+        }
+        
         print(f"Institution codes loaded: {self.institution_codes}")
+        print(f"Military suffix mapping loaded: {self.military_suffix_mapping}")
     
     def check_plate(self, plate_number):
         print(f"=== CHECKING PLATE: {plate_number} ===")
         # Clean the plate number
         plate_clean = plate_number.replace('-', '').replace(' ', '').upper()
         
+        # Check if it's an old military format from OCR
+        if self.is_old_military_format(plate_number):
+            return self.handle_old_military_plate(plate_number)
         # Check if it's a standard plate format that the database supports
-        if self.is_standard_plate(plate_clean):
+        elif self.is_standard_plate(plate_clean):
             return self.check_standard_plate(plate_clean)
         else:
             return self.analyze_non_standard_plate(plate_number)
+    
+    def is_old_military_format(self, plate):
+        """Check if plate matches old military format from OCR: XXXXX-XX or XXXX-X"""
+        plate_clean = plate.replace(' ', '').upper()
+        # Patterns: 12345-00, 1234-V, etc.
+        patterns = [
+            r'^\d{5}-(00|01|02|09|10)$',  # 5 digits + 2 digit suffix
+            r'^\d{4}-(00|01|02|09|10)$',  # 4 digits + 2 digit suffix
+            r'^\d{4,5}-(I|II|III|IV|V|VI|VII|VIII|IX)$'  # Roman numerals
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, plate_clean):
+                print(f"DETECTED OLD MILITARY FORMAT: {plate_clean}")
+                return True
+        return False
+    
+    def handle_old_military_plate(self, plate):
+        """Convert old military format to analyzable format and provide detailed info"""
+        plate_clean = plate.replace(' ', '').upper()
+        print(f"PROCESSING OLD MILITARY PLATE: {plate_clean}")
+        
+        # Extract number and suffix
+        if '-' in plate_clean:
+            number_part, suffix_part = plate_clean.split('-', 1)
+        else:
+            return {"error": "Invalid military plate format"}
+        
+        # Map suffix to institution
+        institution_code = self.military_suffix_mapping.get(suffix_part)
+        institution_name = self.institution_codes.get(institution_code) if institution_code else None
+        
+        if not institution_name:
+            return {
+                "error": f"Unknown military suffix: {suffix_part}",
+                "note": "Suffix tidak dikenal dalam sistem militer Indonesia"
+            }
+        
+        # Determine vehicle type based on number (military classification)
+        vehicle_type = self.get_military_vehicle_type(number_part)
+        
+        # Create comprehensive response for old military plates
+        result = {
+            "status": "Format plat militer lama terdeteksi",
+            "original_plate": plate,
+            "jenis_kendaraan": vehicle_type,
+            "jenis_plat_nomor": "Dinas TNI dan POLRI",
+            "institution": institution_name,
+            "military_analysis": {
+                "nomor_kendaraan": number_part,
+                "kode_institusi": suffix_part
+            }
+        }
+        
+        print(f"OLD MILITARY RESULT: {result}")
+        return result
+    
+    def get_military_vehicle_type(self, number_part):
+        """Simple military vehicle classification"""
+        return "Kendaraan Militer"
     
     def is_standard_plate(self, plate_clean):
         # Check if it matches XX-XXXX-XXX format (without hyphens: XXXXXXXX)
@@ -144,14 +227,6 @@ class IndonesianPlateChecker:
                 "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
             }
         
-        # Old military: XXXX-XX format
-        elif re.match(r'^\d{4}(00|01|02|09|10|V)$', plate_upper):
-            return {
-                "message": "Format plat militer lama tidak didukung oleh database",
-                "jenis_plat_nomor": "Dinas TNI dan POLRI",
-                "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
-            }
-        
         else:
             return {"error": "Format plat nomor tidak valid atau tidak didukung"}
     
@@ -193,8 +268,8 @@ def check_plate():
     
     result = checker.check_plate(plate_number)
     
-    # Check if there's an error (plate not found)
-    if "error" in result:
+    # Check if there's an error (plate not found) - but not for old military format
+    if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
         return app.response_class(
             response=json.dumps({"message": "Plat tidak terdaftar"}),
             status=404,
@@ -221,8 +296,8 @@ def check_plate_post():
     plate_number = data['plate']
     result = checker.check_plate(plate_number)
     
-    # Check if there's an error (plate not found)
-    if "error" in result:
+    # Check if there's an error (plate not found) - but not for old military format
+    if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
         return app.response_class(
             response=json.dumps({"message": "Plat nomor tidak terdaftar"}),
             status=404,
@@ -238,17 +313,30 @@ def check_plate_post():
 @app.route('/', methods=['GET'])
 def home():
     response_data = {
-        "message": "Indonesian Plate Checker API with Institution Support",
-        "database_support": "Hanya mendukung format plat standar Indonesia (XX-XXXX-XXX)",
-        "supported_format": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
+        "message": "Indonesian Plate Checker API with Institution Support & OCR Military Compatibility",
+        "database_support": "Mendukung format plat standar Indonesia (XX-XXXX-XXX) dan format militer lama dari OCR",
+        "supported_formats": {
+            "standard": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
+            "old_military": "XXXXX-XX atau XXXX-X (e.g., 12345-00, 1234-V)"
+        },
         "features": {
             "vehicle_classification": "Berdasarkan nomor identitas polisi (1-1999: Mobil Penumpang, 2000-6999: Sepeda Motor, 7000-7999: Mobil Bus, 8000-8999: Mobil Barang, 9000-9999: Kendaraan Khusus)",
             "plate_type": "Sipil atau Institusi (ZZT/ZZU/ZZD/ZZL/ZZP/ZZH)",
-            "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat"
+            "region_info": "Informasi provinsi, kota, kantor Samsat, dan alamat",
+            "military_support": "Deteksi dan analisis plat militer format lama dengan mapping institusi"
+        },
+        "military_suffix_codes": {
+            "00": "Markas Besar TNI",
+            "01": "TNI AD (Army)",
+            "02": "TNI AL (Navy)", 
+            "09": "TNI AU (Air Force)",
+            "10": "POLRI (Police)",
+            "I-IX": "TNI AD (Roman numerals)"
         },
         "endpoints": {
-            "GET /check-plate?plate=B1234ABC": "Check plate via query parameter",
-            "POST /check-plate": "Check plate via JSON body {'plate': 'B1234ABC'}"
+            "GET /check-plate?plate=B1234ABC": "Check standard plate via query parameter",
+            "GET /check-plate?plate=12345-00": "Check old military plate via query parameter",
+            "POST /check-plate": "Check plate via JSON body {'plate': 'B1234ABC' or '12345-00'}"
         }
     }
     return app.response_class(
