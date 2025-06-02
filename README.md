@@ -179,12 +179,8 @@ curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   "institution": "Markas Besar TNI",
   "military_analysis": {
     "nomor_kendaraan": "50072",
-    "kode_institusi": "00",
-    "format": "Sistem plat militer lama",
-    "era": "Pre-2005 military numbering system"
-  },
-  "note": "Plat militer format lama, tidak dapat divalidasi dengan database SAMSAT standar",
-  "validation_status": "Format recognized but not database-verifiable"
+    "kode_institusi": "00"
+  }
 }
 ```
 
@@ -200,12 +196,8 @@ curl -X POST https://samsat-api-v1.zeabur.app/check-plate \
   "institution": "TNI AD",
   "military_analysis": {
     "nomor_kendaraan": "1234",
-    "kode_institusi": "V",
-    "format": "Sistem plat militer lama",
-    "era": "Pre-2005 military numbering system"
-  },
-  "note": "Plat militer format lama, tidak dapat divalidasi dengan database SAMSAT standar",
-  "validation_status": "Format recognized but not database-verifiable"
+    "kode_institusi": "V"
+  }
 }
 ```
 
@@ -346,10 +338,6 @@ Content-Type: application/json
 | `military_analysis` | object | Military plate breakdown |
 | `military_analysis.nomor_kendaraan` | string | Vehicle number part |
 | `military_analysis.kode_institusi` | string | Institution code part |
-| `military_analysis.format` | string | Format description |
-| `military_analysis.era` | string | Historical period |
-| `note` | string | Additional information |
-| `validation_status` | string | Database validation status |
 
 #### **Error Response Fields:**
 | Field | Type | Description |
