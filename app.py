@@ -1,12 +1,120 @@
-from flask import Flask, request
-import requests
+from fastapi import FastAPI, HTTPException, Depends, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, validator, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+import asyncio
+import httpx
 import re
 import json
+import logging
+import os
+import jwt
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+import secrets
 
-app = Flask(__name__)
-app.config['JSON_SORT_KEYS'] = False
+# Configure logging to hide sensitive information
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-print("=== APP STARTING WITH INSTITUTION SUPPORT & OCR MILITARY COMPATIBILITY ===")
+# Security configuration
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = None  # No expiration for development
+
+# Bearer token for Zeabur cloud deployment
+ZEABUR_BEARER_TOKEN = os.getenv("ZEABUR_BEARER_TOKEN", "dev-token")
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+# Initialize FastAPI app - Documentation hidden completely
+app = FastAPI(
+    title="Indonesian Plate Checker API",
+    description="Secure API for checking Indonesian license plates with institution support & OCR military compatibility",
+    version="2.0.0",
+    docs_url=None,  # Hide Swagger UI completely
+    redoc_url=None  # Hide ReDoc completely
+)
+
+# Add rate limiting middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# Security middleware
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["*"]  # Configure allowed hosts in production
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure specific origins in production
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Security headers
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
+    return response
+
+# Request timeout middleware
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    try:
+        # Set timeout for requests (30 seconds)
+        return await asyncio.wait_for(call_next(request), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.warning(f"Request timeout for {request.url}")
+        return JSONResponse(
+            status_code=408,
+            content={"error": "Request timeout"}
+        )
+
+# Pydantic models for input validation
+class PlateRequest(BaseModel):
+    plate: str = Field(..., min_length=1, max_length=20, description="License plate number")
+    
+    @validator('plate')
+    def validate_plate(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Plate number cannot be empty')
+        # Remove potentially dangerous characters
+        cleaned = re.sub(r'[^\w\-\s]', '', v.strip())
+        if len(cleaned) == 0:
+            raise ValueError('Invalid plate format')
+        return cleaned
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+# Security schemes
+security = HTTPBearer()
+
+print("=== FASTAPI APP STARTING WITH INSTITUTION SUPPORT & OCR MILITARY COMPATIBILITY ===")
 
 class IndonesianPlateChecker:
     def __init__(self):
@@ -40,7 +148,6 @@ class IndonesianPlateChecker:
         self.military_suffix_mapping = {}
         
         # Map numeric suffixes (00-99) to appropriate institutions
-        # You can customize this mapping based on actual military organization
         for suffix in self.VALID_NUMERIC_SUFFIXES:
             if suffix == '00':
                 self.military_suffix_mapping[suffix] = 'ZZT'  # TNI Headquarters
@@ -53,21 +160,20 @@ class IndonesianPlateChecker:
             elif suffix in ['12', '13', '14', '15']:
                 self.military_suffix_mapping[suffix] = 'ZZP'  # POLRI
             else:
-                # Default other suffixes to TNI Army (you can adjust this logic)
+                # Default other suffixes to TNI Army
                 self.military_suffix_mapping[suffix] = 'ZZD'
         
         # Map Roman numerals to TNI Army (traditional usage)
         for roman in self.VALID_ROMAN_SUFFIXES:
             self.military_suffix_mapping[roman] = 'ZZD'
         
-        print(f"Institution codes loaded: {self.institution_codes}")
-        print(f"Valid numeric suffixes: {len(self.VALID_NUMERIC_SUFFIXES)} suffixes (00-99)")
-        print(f"Valid Roman suffixes: {self.VALID_ROMAN_SUFFIXES}")
-        print(f"Military suffix mapping loaded: {len(self.military_suffix_mapping)} mappings")
+        logger.info(f"Institution codes loaded: {self.institution_codes}")
+        logger.info(f"Valid numeric suffixes: {len(self.VALID_NUMERIC_SUFFIXES)} suffixes (00-99)")
+        logger.info(f"Valid Roman suffixes: {self.VALID_ROMAN_SUFFIXES}")
+        logger.info(f"Military suffix mapping loaded: {len(self.military_suffix_mapping)} mappings")
     
-    
-    def check_plate(self, plate_number):
-        print(f"=== CHECKING PLATE: {plate_number} ===")
+    async def check_plate(self, plate_number: str) -> Dict[str, Any]:
+        logger.info(f"=== CHECKING PLATE: {plate_number} ===")
         # Clean the plate number
         plate_clean = plate_number.replace('-', '').replace(' ', '').upper()
         
@@ -76,11 +182,11 @@ class IndonesianPlateChecker:
             return self.handle_old_military_plate(plate_number)
         # Check if it's a standard plate format that the database supports
         elif self.is_standard_plate(plate_clean):
-            return self.check_standard_plate(plate_clean)
+            return await self.check_standard_plate(plate_clean)
         else:
             return self.analyze_non_standard_plate(plate_number)
     
-    def is_old_military_format(self, plate):
+    def is_old_military_format(self, plate: str) -> bool:
         """Check if plate matches old military format from OCR: XXXXX-XX, XXXX-XX, XXXXX-X, or XXXX-X"""
         plate_clean = plate.replace(' ', '').upper()
         
@@ -90,7 +196,7 @@ class IndonesianPlateChecker:
         if numeric_match:
             suffix = numeric_match.group(2)
             if suffix in self.VALID_NUMERIC_SUFFIXES:
-                print(f"DETECTED OLD MILITARY FORMAT (NUMERIC): {plate_clean}")
+                logger.info(f"DETECTED OLD MILITARY FORMAT (NUMERIC): {plate_clean}")
                 return True
         
         # Check for Roman numeral suffixes (I-IX)
@@ -99,15 +205,15 @@ class IndonesianPlateChecker:
         if roman_match:
             suffix = roman_match.group(2)
             if suffix in self.VALID_ROMAN_SUFFIXES:
-                print(f"DETECTED OLD MILITARY FORMAT (ROMAN): {plate_clean}")
+                logger.info(f"DETECTED OLD MILITARY FORMAT (ROMAN): {plate_clean}")
                 return True
         
         return False
     
-    def handle_old_military_plate(self, plate):
+    def handle_old_military_plate(self, plate: str) -> Dict[str, Any]:
         """Convert old military format to analyzable format and provide detailed info"""
         plate_clean = plate.replace(' ', '').upper()
-        print(f"PROCESSING OLD MILITARY PLATE: {plate_clean}")
+        logger.info(f"PROCESSING OLD MILITARY PLATE: {plate_clean}")
         
         # Extract number and suffix
         if '-' in plate_clean:
@@ -165,21 +271,21 @@ class IndonesianPlateChecker:
             }
         }
         
-        print(f"OLD MILITARY RESULT: {result}")
+        logger.info(f"OLD MILITARY RESULT: {result}")
         return result
     
-    def get_military_vehicle_type(self, number_part):
+    def get_military_vehicle_type(self, number_part: str) -> str:
         """Simple military vehicle classification - returns only 'Kendaraan Militer'"""
         return "Kendaraan Militer"
     
-    def is_standard_plate(self, plate_clean):
+    def is_standard_plate(self, plate_clean: str) -> bool:
         # Check if it matches XX-XXXX-XXX format (without hyphens: XXXXXXXX)
         pattern = r'^[A-Z]+\d+[A-Z]+$'
         return bool(re.match(pattern, plate_clean))
     
-    def check_standard_plate(self, plate_clean):
+    async def check_standard_plate(self, plate_clean: str) -> Dict[str, Any]:
         prefix, middle, suffix = self.parse_standard_plate(plate_clean)
-        print(f"PARSED: prefix={prefix}, middle={middle}, suffix={suffix}")
+        logger.info(f"PARSED: prefix={prefix}, middle={middle}, suffix={suffix}")
         
         if not prefix or middle is None or not suffix:
             return {"error": "Invalid standard plate format"}
@@ -187,47 +293,52 @@ class IndonesianPlateChecker:
         # Use only the last letter of suffix for API call (as per original logic)
         suffix_for_api = suffix[-1]
         url = f"{self.base_url}/nopol/{prefix}/belakang/{suffix_for_api}"
-        print(f"API URL: {url}")
+        logger.info(f"API URL: {url}")
         
         try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                result = self.format_response(response.json())
-                if "error" not in result:
-                    # Create plate_analysis with exact order as a regular dict
-                    plate_analysis = {}
-                    plate_analysis["kode_wilayah"] = prefix
-                    plate_analysis["nomor_identitas_polisi"] = middle
-                    plate_analysis["kode_khusus"] = suffix
-                    
-                    # Build final response as regular dict
-                    ordered_result = {}
-                    ordered_result["status"] = "Plat sudah terdaftar"
-                    ordered_result["jenis_kendaraan"] = self.get_vehicle_type(middle)
-                    ordered_result["jenis_plat_nomor"] = self.get_plate_type(suffix)
-                    
-                    # CRITICAL: Add institution field
-                    institution_name = self.get_institution_name(suffix)
-                    print(f"INSTITUTION CHECK: suffix='{suffix}' -> institution='{institution_name}'")
-                    
-                    if institution_name:
-                        ordered_result["institution"] = institution_name
-                        print(f"ADDED INSTITUTION FIELD: {institution_name}")
-                    else:
-                        print("NO INSTITUTION FOUND")
-                    
-                    ordered_result["plate_analysis"] = plate_analysis
-                    ordered_result["plate_region"] = result["plate_region"]
-                    
-                    print(f"FINAL RESULT KEYS: {list(ordered_result.keys())}")
-                    return ordered_result
-                return result
-            else:
-                return {"error": f"Plate not found: {response.status_code}"}
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(url)
+                if response.status_code == 200:
+                    result = self.format_response(response.json())
+                    if "error" not in result:
+                        # Create plate_analysis with exact order as a regular dict
+                        plate_analysis = {}
+                        plate_analysis["kode_wilayah"] = prefix
+                        plate_analysis["nomor_identitas_polisi"] = middle
+                        plate_analysis["kode_khusus"] = suffix
+                        
+                        # Build final response as regular dict
+                        ordered_result = {}
+                        ordered_result["status"] = "Plat sudah terdaftar"
+                        ordered_result["jenis_kendaraan"] = self.get_vehicle_type(middle)
+                        ordered_result["jenis_plat_nomor"] = self.get_plate_type(suffix)
+                        
+                        # CRITICAL: Add institution field
+                        institution_name = self.get_institution_name(suffix)
+                        logger.info(f"INSTITUTION CHECK: suffix='{suffix}' -> institution='{institution_name}'")
+                        
+                        if institution_name:
+                            ordered_result["institution"] = institution_name
+                            logger.info(f"ADDED INSTITUTION FIELD: {institution_name}")
+                        else:
+                            logger.info("NO INSTITUTION FOUND")
+                        
+                        ordered_result["plate_analysis"] = plate_analysis
+                        ordered_result["plate_region"] = result["plate_region"]
+                        
+                        logger.info(f"FINAL RESULT KEYS: {list(ordered_result.keys())}")
+                        return ordered_result
+                    return result
+                else:
+                    return {"error": f"Plate not found: {response.status_code}"}
+        except httpx.TimeoutException:
+            logger.error("External API timeout")
+            return {"error": "Service temporarily unavailable"}
         except Exception as e:
-            return {"error": str(e)}
+            logger.error(f"External API error: {str(e)}")
+            return {"error": "Service error"}
     
-    def parse_standard_plate(self, plate_clean):
+    def parse_standard_plate(self, plate_clean: str):
         # Parse XXXXXXXX format (e.g., B1234ABC -> B, 1234, ABC)
         pattern = r'^([A-Z]+)(\d+)([A-Z]+)$'
         match = re.match(pattern, plate_clean)
@@ -238,7 +349,7 @@ class IndonesianPlateChecker:
             return prefix, middle, suffix
         return None, None, None
     
-    def get_vehicle_type(self, middle_number):
+    def get_vehicle_type(self, middle_number: int) -> str:
         if 1 <= middle_number <= 1999:
             return "Mobil Penumpang"
         elif 2000 <= middle_number <= 6999:
@@ -252,18 +363,18 @@ class IndonesianPlateChecker:
         else:
             return "Tidak Diketahui"
     
-    def get_plate_type(self, suffix):
+    def get_plate_type(self, suffix: str) -> str:
         if suffix in self.institution_codes:
             return "Dinas TNI dan POLRI" 
         else:
             return "Sipil"
     
-    def get_institution_name(self, suffix):
+    def get_institution_name(self, suffix: str) -> Optional[str]:
         result = self.institution_codes.get(suffix, None)
-        print(f"get_institution_name('{suffix}') = '{result}'")
+        logger.info(f"get_institution_name('{suffix}') = '{result}'")
         return result
     
-    def analyze_non_standard_plate(self, plate):
+    def analyze_non_standard_plate(self, plate: str) -> Dict[str, Any]:
         plate_upper = plate.upper().replace('-', '').replace(' ', '')
         
         # State agency: RI format
@@ -285,7 +396,7 @@ class IndonesianPlateChecker:
         else:
             return {"error": "Format plat nomor tidak valid atau tidak didukung"}
     
-    def parse_plate(self, plate):
+    def parse_plate(self, plate: str):
         # Legacy method for backward compatibility
         pattern = r'^([A-Z]+)\d+([A-Z]+)$'
         match = re.match(pattern, plate.upper())
@@ -293,7 +404,7 @@ class IndonesianPlateChecker:
             return match.group(1), match.group(2)[-1]
         return None, None
     
-    def format_response(self, data):
+    def format_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if 'fields' not in data:
             return {"error": "Invalid response format"}
         
@@ -310,65 +421,130 @@ class IndonesianPlateChecker:
 # Initialize the checker
 checker = IndonesianPlateChecker()
 
-@app.route('/check-plate', methods=['GET'])
-def check_plate():
-    plate_number = request.args.get('plate')
+# Authentication functions
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    # No expiration for development
+    if ACCESS_TOKEN_EXPIRE_MINUTES:
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode.update({"exp": expire})
     
-    if not plate_number:
-        return app.response_class(
-            response=json.dumps({"error": "Plate number is required"}),
-            status=400,
-            mimetype='application/json'
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify JWT token from Authorization header"""
+    try:
+        # Check if using Zeabur bearer token
+        if credentials.credentials == ZEABUR_BEARER_TOKEN:
+            return {"username": "zeabur_user"}
+        
+        # For development/testing, you can use a simple static token
+        if os.getenv("ENVIRONMENT") == "development" and credentials.credentials == "dev-token":
+            return {"username": "developer"}
+            
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return {"username": username}
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    result = checker.check_plate(plate_number)
-    
-    # Check if there's an error (plate not found) - but not for old military format
-    if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
-        return app.response_class(
-            response=json.dumps({"message": "Plat tidak terdaftar"}),
-            status=404,
-            mimetype='application/json'
-        )
-    
-    return app.response_class(
-        response=json.dumps(result),
-        status=200,
-        mimetype='application/json'
+
+# Error handler for validation errors
+@app.exception_handler(422)
+async def validation_exception_handler(request: Request, exc):
+    logger.warning(f"Validation error for {request.url}: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Invalid input format"}
     )
 
-@app.route('/check-plate', methods=['POST'])
-def check_plate_post():
-    data = request.get_json()
-    
-    if not data or 'plate' not in data:
-        return app.response_class(
-            response=json.dumps({"error": "Plate number is required"}),
-            status=400,
-            mimetype='application/json'
-        )
-    
-    plate_number = data['plate']
-    result = checker.check_plate(plate_number)
-    
-    # Check if there's an error (plate not found) - but not for old military format
-    if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
-        return app.response_class(
-            response=json.dumps({"message": "Plat nomor tidak terdaftar"}),
-            status=404,
-            mimetype='application/json'
-        )
-    
-    return app.response_class(
-        response=json.dumps(result),
-        status=200,
-        mimetype='application/json'
+# Global exception handler for error sanitization
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error for {request.url}: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
     )
 
-@app.route('/', methods=['GET'])
-def home():
+# Routes
+@app.get("/check-plate")
+@limiter.limit("100/minute")
+async def check_plate_get(
+    request: Request,
+    plate: str,
+    current_user: dict = Depends(verify_token)
+):
+    """Check license plate via GET request with query parameter"""
+    try:
+        # Validate input
+        plate_request = PlateRequest(plate=plate)
+        
+        result = await checker.check_plate(plate_request.plate)
+        
+        # Check if there's an error (plate not found) - but not for old military format
+        if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
+            raise HTTPException(
+                status_code=404,
+                detail="Plat tidak terdaftar"
+            )
+        
+        return result
+    except ValueError as e:
+        logger.warning(f"Invalid plate format: {plate}")
+        raise HTTPException(status_code=400, detail="Invalid plate format")
+
+@app.post("/check-plate")
+@limiter.limit("100/minute")
+async def check_plate_post(
+    request: Request,
+    plate_request: PlateRequest,
+    current_user: dict = Depends(verify_token)
+):
+    """Check license plate via POST request with JSON body"""
+    try:
+        result = await checker.check_plate(plate_request.plate)
+        
+        # Check if there's an error (plate not found) - but not for old military format
+        if "error" in result and "Format plat militer lama terdeteksi" not in result.get("status", ""):
+            raise HTTPException(
+                status_code=404,
+                detail="Plat nomor tidak terdaftar"
+            )
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error processing plate request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/")
+@limiter.limit("100/minute")
+async def home(request: Request):
+    """API documentation and information"""
     response_data = {
         "message": "Indonesian Plate Checker API with Institution Support & OCR Military Compatibility",
+        "version": "2.0.0",
+        "security_features": [
+            "Bearer token authentication",
+            "Rate limiting (100 requests/minute)",
+            "Input validation", 
+            "Security headers",
+            "Request timeouts",
+            "Error sanitization"
+        ],
         "database_support": "Mendukung format plat standar Indonesia (XX-XXXX-XXX) dan format militer lama dari OCR",
         "supported_formats": {
             "standard": "XX-XXXX-XXX (e.g., B-1234-ABC, D-5678-ZZP)",
@@ -388,21 +564,33 @@ def home():
             "10": "POLRI (Police)",
             "I-IX": "TNI AD (Roman numerals)"
         },
+        "authentication": {
+            "type": "Bearer Token",
+            "header": "Authorization: Bearer <token>",
+            "note": "All endpoints require valid JWT token or configured bearer token",
+            "zeabur_config": "Set ZEABUR_BEARER_TOKEN environment variable"
+        },
         "endpoints": {
             "GET /check-plate?plate=B1234ABC": "Check standard plate via query parameter",
             "GET /check-plate?plate=12345-00": "Check old military plate via query parameter",
             "POST /check-plate": "Check plate via JSON body {'plate': 'B1234ABC' or '12345-00'}"
         }
     }
-    return app.response_class(
-        response=json.dumps(response_data),
-        status=200,
-        mimetype='application/json'
-    )
+    return response_data
+
+# Token generation endpoint for testing (only in development)
+@app.post("/auth/token")
+async def get_token(username: str = "test_user"):
+    """Generate JWT token for testing purposes"""
+    if os.getenv("ENVIRONMENT") != "development":
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # No expiration for development
+    access_token = create_access_token(data={"sub": username})
+    return {"access_token": access_token, "token_type": "bearer", "expires": "never"}
 
 if __name__ == '__main__':
-    # Get port from environment variable (cloud platforms often set this)
-    import os
-    port = int(os.environ.get('PORT', 5555))
-    print(f"Starting Flask app on port {port}")
-    app.run(host='0.0.0.0', debug=False, port=port)
+    import uvicorn
+    port = int(os.environ.get('PORT', 5555))  # Changed default port to 5555
+    logger.info(f"Starting FastAPI app on port {port}")
+    uvicorn.run(app, host='0.0.0.0', port=port)
