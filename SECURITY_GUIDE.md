@@ -6,7 +6,7 @@ The Samsat API has been upgraded to FastAPI with comprehensive security features
 ## Architecture
 
 ```
-Internet → Nginx (Port 80/443) → FastAPI (Port 5555)
+Internet → Nginx (Port 80/443) → FastAPI (Port 8080)
 ```
 
 ## Security Features
@@ -29,7 +29,7 @@ Then use `dev-token` as the bearer token.
 
 #### Token Generation (Development Only)
 ```bash
-curl -X POST "http://localhost:5555/auth/token?username=your_username"
+curl -X POST "http://localhost:8080/auth/token?username=your_username"
 ```
 
 **Note**: Tokens do not expire in development mode.
@@ -106,7 +106,7 @@ cat > .env << EOF
 SECRET_KEY=your-secret-key-here
 ZEABUR_BEARER_TOKEN=your-bearer-token
 ENVIRONMENT=production
-PORT=5555
+PORT=8080
 EOF
 
 # Start services
@@ -147,7 +147,7 @@ sudo systemctl enable nginx
 pip install -r requirements.txt
 
 # Start FastAPI
-uvicorn app:app --host 127.0.0.1 --port 5555
+uvicorn app:app --host 127.0.0.1 --port 8080
 ```
 
 ## API Usage Examples
@@ -160,7 +160,7 @@ curl -X GET "http://localhost/check-plate?plate=B1234ABC" \
 
 ### 2. Direct FastAPI Access
 ```bash
-curl -X GET "http://localhost:5555/check-plate?plate=B1234ABC" \
+curl -X GET "http://localhost:8080/check-plate?plate=B1234ABC" \
   -H "Authorization: Bearer your-bearer-token"
 ```
 
@@ -170,7 +170,7 @@ curl -X GET "http://localhost:5555/check-plate?plate=B1234ABC" \
 curl -X GET "http://localhost/health"
 
 # Direct FastAPI
-curl -X GET "http://localhost:5555/"
+curl -X GET "http://localhost:8080/"
 ```
 
 ### 4. Check Plate via POST
@@ -194,12 +194,12 @@ curl -X GET "http://localhost/check-plate?plate=12345-00" \
 ZEABUR_BEARER_TOKEN=your-secure-bearer-token
 SECRET_KEY=your-secret-key-here
 ENVIRONMENT=production
-PORT=5555
+PORT=8080
 ```
 
 ### Optional
 ```bash
-PORT=5555  # Default port (changed from 8000)
+PORT=8080  # Default port (changed from 5555)
 ```
 
 ## Nginx Configuration Details
@@ -294,7 +294,7 @@ sudo certbot --nginx -d your-domain.com
 ### Common Issues:
 
 1. **502 Bad Gateway**
-   - Check if FastAPI is running on port 5555
+   - Check if FastAPI is running on port 8080
    - Verify network connectivity between nginx and FastAPI
 
 2. **Rate Limit Exceeded**
@@ -324,7 +324,7 @@ docker-compose logs samsat-api
 docker-compose logs nginx
 
 # Test nginx upstream
-curl -I http://localhost:5555/
+curl -I http://localhost:8080/
 ```
 
 ## Migration from Previous Version
@@ -342,7 +342,7 @@ curl -I http://localhost:5555/
 - Same response formats
 - Same business logic
 - Same plate checking functionality
-- **New**: Access through port 80 (nginx) or 5555 (direct)
+- **New**: Access through port 80 (nginx) or 8080 (direct)
 
 ## Support
 

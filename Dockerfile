@@ -23,17 +23,17 @@ RUN adduser --disabled-password --gecos '' --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Expose port 5555
-EXPOSE 5555
+# Expose port 8080
+EXPOSE 8080
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV PORT=5555
+ENV PORT=8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5555/ || exit 1
+    CMD curl -f http://localhost:8080/ || exit 1
 
 # Use uvicorn for FastAPI production
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5555", "--workers", "1"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

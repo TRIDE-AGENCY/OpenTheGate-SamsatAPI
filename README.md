@@ -29,7 +29,7 @@ The Indonesian Samsat API is a **secure, high-performance FastAPI** application 
 ## 🏗️ Architecture
 
 ```
-Internet → Nginx (Port 80/443) → FastAPI (Port 5555) → Samsat Database
+Internet → Nginx (Port 80/443) → FastAPI (Port 8080) → Samsat Database
             ↓                        ↓
         Rate Limiting           Authentication
         Security Headers        Input Validation
@@ -101,7 +101,7 @@ export SECRET_KEY=your-secret-key
 python app.py
 
 # Or with uvicorn
-uvicorn app:app --host 0.0.0.0 --port 5555
+uvicorn app:app --host 0.0.0.0 --port 8080
 ```
 
 ### 🌐 **Production with Nginx**
@@ -118,7 +118,7 @@ sudo nginx -t
 
 # Start services
 sudo systemctl start nginx
-uvicorn app:app --host 127.0.0.1 --port 5555
+uvicorn app:app --host 127.0.0.1 --port 8080
 ```
 
 ---
@@ -134,7 +134,7 @@ SECRET_KEY=your-secret-key-here
 ENVIRONMENT=production
 
 # Optional
-PORT=5555
+PORT=8080
 ```
 
 ### **Bearer Token Usage**
@@ -145,7 +145,7 @@ curl -X GET "http://localhost/check-plate?plate=B1234ABC" \
   -H "Authorization: Bearer your-bearer-token"
 
 # Direct FastAPI
-curl -X GET "http://localhost:5555/check-plate?plate=B1234ABC" \
+curl -X GET "http://localhost:8080/check-plate?plate=B1234ABC" \
   -H "Authorization: Bearer your-bearer-token"
 ```
 
@@ -331,7 +331,7 @@ services:
   # FastAPI Application
   samsat-api:
     build: .
-    ports: ["5555:5555"]
+    ports: ["8080:8080"]
     environment:
       - ZEABUR_BEARER_TOKEN=${ZEABUR_BEARER_TOKEN}
       - SECRET_KEY=${SECRET_KEY}
@@ -528,7 +528,7 @@ docker-compose ps
 
 # Health Checks
 curl -f http://localhost/health        # Nginx health
-curl -f http://localhost:5555/         # FastAPI health
+curl -f http://localhost:8080/         # FastAPI health
 
 # Logs
 docker-compose logs -f nginx           # Nginx logs
@@ -568,7 +568,7 @@ sudo nginx -t
 docker-compose ps
 
 # Check connectivity
-curl -I http://localhost:5555/health
+curl -I http://localhost:8080/health
 
 # View detailed logs
 ./deploy.sh logs nginx | grep ERROR
@@ -610,7 +610,7 @@ curl -I http://localhost:5555/health
 ZEABUR_BEARER_TOKEN=your-production-token
 SECRET_KEY=your-production-secret
 ENVIRONMENT=production
-PORT=5555
+PORT=8080
 ```
 
 ### **SSL/HTTPS Setup**

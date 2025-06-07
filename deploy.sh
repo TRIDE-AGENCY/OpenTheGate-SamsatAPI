@@ -51,7 +51,7 @@ create_env_file() {
 SECRET_KEY=$(openssl rand -hex 32)
 ZEABUR_BEARER_TOKEN=$(openssl rand -hex 16)
 ENVIRONMENT=production
-PORT=5555
+PORT=8080
 EOF
         log_success "Created .env file with random secrets"
         log_warning "Please update ZEABUR_BEARER_TOKEN in .env file with your preferred token"
@@ -80,7 +80,7 @@ start() {
     if docker-compose ps | grep -q "Up"; then
         log_success "Services started successfully!"
         log_info "API is available at: http://localhost"
-        log_info "Direct FastAPI access: http://localhost:5555"
+        log_info "Direct FastAPI access: http://localhost:8080"
         show_status
     else
         log_error "Failed to start services"
@@ -119,7 +119,7 @@ show_status() {
     fi
     
     # Check FastAPI health
-    if curl -f -s http://localhost:5555/ > /dev/null 2>&1; then
+    if curl -f -s http://localhost:8080/ > /dev/null 2>&1; then
         log_success "✓ FastAPI is healthy"
     else
         log_error "✗ FastAPI is not responding"
@@ -153,9 +153,9 @@ test_api() {
     
     echo
     
-    # Test direct FastAPI (port 5555)
-    log_info "Testing direct FastAPI (port 5555):"
-    if curl -s -H "Authorization: Bearer $token" http://localhost:5555/check-plate?plate=B1234ABC | jq .; then
+    # Test direct FastAPI (port 8080)
+    log_info "Testing direct FastAPI (port 8080):"
+    if curl -s -H "Authorization: Bearer $token" http://localhost:8080/check-plate?plate=B1234ABC | jq .; then
         log_success "✓ Direct FastAPI test passed"
     else
         log_error "✗ Direct FastAPI test failed"

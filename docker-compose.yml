@@ -10,13 +10,13 @@ services:
       - ENVIRONMENT=production
       - SECRET_KEY=${SECRET_KEY:-your-secret-key}
       - ZEABUR_BEARER_TOKEN=${ZEABUR_BEARER_TOKEN:-dev-token}
-      - PORT=5555
+      - PORT=8080
     ports:
-      - "5555:5555"
+      - "8080:8080"
     networks:
       - samsat-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5555/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3

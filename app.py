@@ -591,6 +591,6 @@ async def get_token(username: str = "test_user"):
 
 if __name__ == '__main__':
     import uvicorn
-    port = int(os.environ.get('PORT', 5555))  # Changed default port to 5555
+    port = int(os.environ.get('PORT', 8080))  # Changed default port to 8080
     logger.info(f"Starting FastAPI app on port {port}")
     uvicorn.run(app, host='0.0.0.0', port=port)
