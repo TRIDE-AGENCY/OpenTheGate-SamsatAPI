@@ -283,6 +283,28 @@ curl -X GET "http://localhost/health"
 }
 ```
 
+### 🏛️ **Diplomatic Plate (Not Supported)**
+**Request:** `CD1234`
+
+```json
+{
+  "message": "Format plat diplomatik tidak didukung oleh database",
+  "jenis_plat_nomor": "Diplomatik",
+  "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
+}
+```
+
+### 🏢 **State Service Plate (Not Supported)**
+**Request:** `RI9876`
+
+```json
+{
+  "message": "Format plat dinas negara tidak didukung oleh database",
+  "jenis_plat_nomor": "Dinas Pemerintah",
+  "note": "Database hanya mendukung format plat standar (XX-XXXX-XXX)"
+}
+```
+
 ### ❌ **Rate Limit Exceeded**
 ```json
 {
@@ -319,6 +341,16 @@ curl -X GET "http://localhost/health"
 # Testing
 ./deploy.sh test                    # Test with default token
 ./deploy.sh test your-bearer-token  # Test with custom token
+
+# Test special plate formats
+curl -X GET "http://localhost/check-plate?plate=CD1234" \
+  -H "Authorization: Bearer your-token"  # Test diplomatic plate
+
+curl -X GET "http://localhost/check-plate?plate=RI9876" \
+  -H "Authorization: Bearer your-token"  # Test state service plate
+
+curl -X GET "http://localhost/check-plate?plate=CS567" \
+  -H "Authorization: Bearer your-token"  # Test another diplomatic format
 
 # Maintenance
 ./deploy.sh update         # Update configuration and restart
@@ -363,6 +395,14 @@ services:
 | Numeric 5-digit | 5 | 00-99 | Various | `50072-85` |
 | Roman 4-digit | 4 | I-IX | TNI AD | `1234-V` |
 | Roman 5-digit | 5 | I-IX | TNI AD | `98765-IX` |
+
+### **Special Government Formats**
+| Format | Description | Pattern | Example | Status |
+|--------|-------------|---------|---------|---------|
+| **Plat Diplomatik** | Diplomatic vehicles | `CC`, `CD`, `CN`, `CS` + numbers | `CD1234`, `CC567` | Not supported by database |
+| **Plat Dinas Negara** | State service vehicles | `RI` + numbers | `RI123`, `RI9876` | Not supported by database |
+
+**Note**: While the API can detect diplomatic and state service plate formats, these are not supported by the SAMSAT database and will return informational responses only.
 
 ### **Institution Mapping**
 | Suffix/Code | Institution | Type |
@@ -413,6 +453,33 @@ async function checkPlate(plateNumber) {
 checkPlate('B1234ABC');      // Standard plate
 checkPlate('50072-00');      // Military 5-digit
 checkPlate('1234-V');        // Military Roman
+checkPlate('CD1234');        // Diplomatic plate (detected but not supported)
+checkPlate('RI9876');        // State service plate (detected but not supported)
+
+// Handle special plate formats
+async function handleSpecialPlates(plateNumber) {
+  try {
+    const result = await checkPlate(plateNumber);
+    
+    // Check for diplomatic plates
+    if (result.jenis_plat_nomor === 'Diplomatik') {
+      console.log('Diplomatic plate detected:', result.message);
+      return { type: 'diplomatic', supported: false, data: result };
+    }
+    
+    // Check for state service plates
+    if (result.jenis_plat_nomor === 'Dinas Pemerintah' && result.message.includes('dinas negara')) {
+      console.log('State service plate detected:', result.message);
+      return { type: 'state_service', supported: false, data: result };
+    }
+    
+    // Regular processing for supported plates
+    return { type: 'standard', supported: true, data: result };
+  } catch (error) {
+    console.error('Error processing plate:', error);
+    throw error;
+  }
+}
 ```
 
 ### **Python**
@@ -452,6 +519,36 @@ class SamsatAPI:
 api = SamsatAPI()
 result = api.check_plate('12345-85')
 print(f"Institution: {result.get('institution')}")
+
+# Handle special government plates
+def handle_special_plates(api, plate_number):
+    """Handle diplomatic and state service plates"""
+    try:
+        result = api.check_plate(plate_number)
+        
+        # Check for diplomatic plates
+        if result.get('jenis_plat_nomor') == 'Diplomatik':
+            print(f"Diplomatic plate detected: {result.get('message')}")
+            return {'type': 'diplomatic', 'supported': False, 'data': result}
+        
+        # Check for state service plates  
+        if (result.get('jenis_plat_nomor') == 'Dinas Pemerintah' and 
+            'dinas negara' in result.get('message', '')):
+            print(f"State service plate detected: {result.get('message')}")
+            return {'type': 'state_service', 'supported': False, 'data': result}
+        
+        # Regular supported plates
+        return {'type': 'standard', 'supported': True, 'data': result}
+        
+    except Exception as e:
+        print(f"Error processing plate {plate_number}: {e}")
+        raise
+
+# Examples
+api = SamsatAPI()
+handle_special_plates(api, 'CD1234')    # Diplomatic
+handle_special_plates(api, 'RI9876')    # State service
+handle_special_plates(api, 'B1234ABC')  # Standard
 ```
 
 ### **PHP**
@@ -598,6 +695,25 @@ curl -I http://localhost:8080/health
    ```bash
    # Verify token in .env file
    cat .env | grep ZEABUR_BEARER_TOKEN
+   ```
+
+4. **Special Plate Format Responses**
+   ```bash
+   # Diplomatic plates (CD, CC, CN, CS) return informational messages
+   # These are detected but not supported by SAMSAT database
+   # Expected response: "Format plat diplomatik tidak didukung oleh database"
+   
+   # State service plates (RI format) return informational messages  
+   # These are detected but not supported by SAMSAT database
+   # Expected response: "Format plat dinas negara tidak didukung oleh database"
+   
+   # Test diplomatic plate detection
+   curl -X GET "http://localhost/check-plate?plate=CD123" \
+     -H "Authorization: Bearer your-token"
+   
+   # Test state service plate detection
+   curl -X GET "http://localhost/check-plate?plate=RI456" \
+     -H "Authorization: Bearer your-token"
    ```
 
 ---
