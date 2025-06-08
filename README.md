@@ -283,7 +283,7 @@ curl -X GET "http://localhost/health"
 }
 ```
 
-### 🏛️ **Diplomatic Plate (Not Supported)**
+### 🏛️ **Diplomatic Plate**
 **Request:** `CD1234`
 
 ```json
@@ -294,7 +294,7 @@ curl -X GET "http://localhost/health"
 }
 ```
 
-### 🏢 **State Service Plate (Not Supported)**
+### 🏢 **State Service Plate**
 **Request:** `RI9876`
 
 ```json
